@@ -1,32 +1,41 @@
 #pragma once
-#define BUFFER_SIZE 4096
 #include "pch.h"
 #include "framework.h"
-//#include "singleton.h"
+
+#pragma pack(push)
+#pragma pack(1)//告诉编译器将每个成员变量的对齐设为1字节
+
 class CPacket
 {
 public:
 	CPacket() :sHead(0), nLength(0), sCmd(0), sSum(0) {}
-	//打包
-	CPacket(WORD nCmd, const BYTE* pData, size_t nSize) {
+	CPacket(WORD nCmd, const BYTE* pData, size_t nSize) {//根据给定的参数来构建CPacket对象
 		sHead = 0xFEFF;
 		nLength = nSize + 4;
 		sCmd = nCmd;
-		strData.resize(nSize);
-		memcpy((void*)strData.c_str(), pData, nSize);
+		if (nSize > 0) {
+			strData.resize(nSize);
+			memcpy((void*)strData.c_str(), pData, nSize);
+		}
+		else {
+			strData.clear();
+		}
+
 		sSum = 0;
-		for (size_t j = 0; j < strData.size(); j++) {
+		for (size_t j = 0; j < strData.size(); j++)
+		{
 			sSum += BYTE(strData[j]) & 0xFF;
 		}
+
 	}
-	CPacket(const CPacket& pack) {
+	CPacket(const CPacket& pack) {//拷贝构造
 		sHead = pack.sHead;
 		nLength = pack.nLength;
 		sCmd = pack.sCmd;
 		strData = pack.strData;
 		sSum = pack.sSum;
 	}
-	CPacket(const BYTE* pData, size_t& nSize) {
+	CPacket(const BYTE* pData, size_t& nSize) {//找包头
 		size_t i = 0;
 		for (; i < nSize; i++) {
 			if (*(WORD*)(pData + i) == 0xFEFF) {
@@ -35,7 +44,7 @@ public:
 				break;
 			}
 		}
-		if ((i + 4 + 2 + 2) > nSize) {//包数据可能不全，或者包头未能全部接收到
+		if ((i + 4 + 2 + 2) > nSize) {//加上4字节长度字段，命令字段（2字节），校验和字段（2字节）包数据可能不全，或者包头未能全部接收到
 			nSize = 0;
 			return;
 		}
@@ -76,27 +85,41 @@ public:
 		else
 			return *this;
 	}
-	int Size() {
+	int Size() {//包数据的大小
 		return nLength + 6;
 	}
-	const char* Data() {
+	const char* Data() {//将CPacket对象的各个部分组合起来，并返回指向序列开头的const char*指针
 		strOut.resize(nLength + 6);
-		BYTE* pData = (BYTE*)strOut.c_str();
+		BYTE* pData = (BYTE*)strOut.c_str();//对pData操作影响strOut内容
 		*(WORD*)pData = sHead; pData += 2;
-		*(DWORD*)(pData) = nLength; pData += 4;
+		*(DWORD*)pData = nLength; pData += 4;
 		*(WORD*)pData = sCmd; pData += 2;
 		memcpy(pData, strData.c_str(), strData.size()); pData += strData.size();
 		*(WORD*)pData = sSum;
 		return strOut.c_str();
 	}
+
 public:
 	WORD sHead;//包头，固定位FE FF
 	DWORD nLength;//包长度（从控制命令开始，到和校验结束）
 	WORD sCmd;//控制命令
 	std::string strData;//包数据
 	WORD sSum;//和校验
-	std::string strOut;
+	std::string strOut;//整个包的数据
 };
+#pragma pack(pop)
+
+typedef struct MouseEvent {
+	MouseEvent() {
+		nAction = 0;
+		nButton = -1;
+		ptXY.x = 0;
+		ptXY.y = 0;
+	}
+	WORD nAction;//点击，移动，双击
+	WORD nButton;//左键，右键，中键
+	POINT ptXY;//坐标
+}MOUSEEV, * PMOUSEEV;
 
 class CServerSocket
 {
@@ -105,38 +128,37 @@ public:
 		if (m_instance == NULL) {//静态函数没有this指针，不能直接访问成员变量
 			m_instance = new CServerSocket();
 		}
-		else
-			return m_instance;
+		return m_instance;
 	}
-	bool InitSocker() {
-		if (m_sock == -1) return false;
+	bool InitSocket() {
+
+		if (m_sock == -1)return false;
 		sockaddr_in serv_adr;
 		memset(&serv_adr, 0, sizeof(serv_adr));
 		serv_adr.sin_family = AF_INET;
 		serv_adr.sin_addr.s_addr = INADDR_ANY;
 		serv_adr.sin_port = htons(9527);
 		//绑定
-		if (bind(m_sock, (sockaddr*)&serv_adr, sizeof(serv_adr)) == -1)
-		{
+		if (bind(m_sock, (sockaddr*)&serv_adr, sizeof(serv_adr)) == -1) {
 			return false;
 		}
-		if (listen(m_sock, 1) == -1)
-		{
+		if (listen(m_sock, 1) == -1) {
 			return false;
 		}
 		return true;
-	}
 
+	}
 	bool AcceptClient() {
 		sockaddr_in client_adr;
+		//char buffer[1024];
 		int cli_sz = sizeof(client_adr);
 		m_client = accept(m_sock, (sockaddr*)&client_adr, &cli_sz);
-		if (m_client == -1) return false;
+		if (m_client == -1)return false;
 		return true;
+
 	}
-
-
-	int  DealCommand() {
+#define BUFFER_SIZE 4096
+	int  DealCommand() {//处理接收到的网络命令
 		if (m_client == -1)return -1;
 		//char buffer[1024] = "";
 		char* buffer = new char[BUFFER_SIZE];
@@ -158,52 +180,57 @@ public:
 		}
 		return -1;
 	}
-
 	const bool Send(char* pData, int nSize) {
-		if (m_client == -1) return false;
-		return (send(m_client, pData, nSize, 0) > 0);
+		if (m_client == -1)return false;
+		return (send(m_client, pData, nSize, 0)) > 0;
 	}
-
 	bool Send(CPacket& pack) {
-		if (m_client == -1) return false;
-		return (send(m_client, pack.Data(), pack.Size(), 0) > 0);
+		if (m_client == -1)return false;
+		return (send(m_client, pack.Data(), pack.Size(), 0)) > 0;
 	}
-
-
+	bool GetFilePath(std::string& strPath) {
+		if ((m_packet.sCmd == 2) || (m_packet.sCmd == 3) || (m_packet.sCmd == 4)) {//获取文件列表
+			strPath = m_packet.strData;
+			return true;
+		}
+		else
+			return false;
+	}
+	bool GetMouseEvent(MOUSEEV& mouse) {
+		if (m_packet.sCmd == 5) {
+			memcpy(&mouse, m_packet.strData.c_str(), sizeof(MOUSEEV));
+			return true;
+		}
+		return false;
+	}
 private:
 	SOCKET m_sock;
 	SOCKET m_client;
-	static CServerSocket* m_instance;
 	CPacket m_packet;
-	CServerSocket& operator=(const CServerSocket& ss){}
+	CServerSocket& operator=(const CServerSocket& ss) {}
 	CServerSocket(const CServerSocket& ss) {
 		m_client = ss.m_client;
 		m_sock = ss.m_sock;
 	}
 	CServerSocket() {
 		m_client = INVALID_SOCKET;
-		if (InitSocketEnv() == FALSE)
-		{
-			MessageBox(NULL, _T("无法初始化套接字环境，请检查网络设置"), _T("初始化错误！"), MB_OK | MB_ICONERROR);
+		if (InitSockEnv() == FALSE) {
+			MessageBox(NULL, _T("无法初始化套接字环境,请检查网络设置"), _T("初始化错误"), MB_OK | MB_ICONERROR);
 			exit(0);
 		}
 		m_sock = socket(PF_INET, SOCK_STREAM, 0);
 	}
-
 	~CServerSocket() {
-		std::cout << "析构函数被调用" << std::endl;
 		closesocket(m_sock);
 		WSACleanup();
 	}
-
-	BOOL InitSocketEnv() {
+	BOOL InitSockEnv() {
 		WSADATA data;
-		if (WSAStartup(MAKEWORD(1, 1), &data) != 0) {//TODO: 返回值处理
+		if (WSAStartup(MAKEWORD(1, 1), &data) != 0) {
 			return FALSE;
 		}
-		return TRUE;
+		else return TRUE;
 	}
-
 	static void releaseInstance() {
 		if (m_instance != NULL) {
 			CServerSocket* tmp = m_instance;
@@ -211,8 +238,9 @@ private:
 			delete tmp;
 		}
 	}
+	static CServerSocket* m_instance;
 
-	class CHelper {
+	class CHelper {//在单例模式中管理生命周期，确保单例的实例正确的在程序结束时被销毁
 	public:
 		CHelper() {
 			CServerSocket::getInstance();
@@ -224,3 +252,5 @@ private:
 	};
 	static CHelper m_helper;
 };
+
+
