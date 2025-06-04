@@ -2,9 +2,10 @@
 #include "pch.h"
 #include "framework.h"
 #include <string>
-
+#include <vector>
 #pragma pack(push)
 #pragma pack(1)//告诉编译器将每个成员变量的对齐设为1字节
+#define BUFFER_SIZE 4096
 
 class CPacket
 {
@@ -122,21 +123,7 @@ typedef struct MouseEvent {
 	POINT ptXY;//坐标
 }MOUSEEV, * PMOUSEEV;
 
-std::string GetErrorInfo(int wsaErrCode) {
-	std::string ret;
-	LPVOID lpMsgBuf = NULL;
-	FormatMessage(
-		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER,
-		NULL,
-		wsaErrCode,
-		MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-		(LPTSTR)&lpMsgBuf,
-		0,
-		NULL);
-	ret = (char*)lpMsgBuf;
-	LocalFree(lpMsgBuf);
-	return ret;
-}
+std::string GetErrorInfo(int wsaErrCode);
 
 
 class CClientSocket
@@ -149,7 +136,8 @@ public:
 		return m_instance;
 	}
 	bool InitSocket(const std::string& strIPAddress) {
-
+		if (m_sock != INVALID_SOCKET) CloseSocket();
+		m_sock = socket(PF_INET, SOCK_STREAM, 0);
 		if (m_sock == -1)return false;
 		sockaddr_in serv_adr;
 		memset(&serv_adr, 0, sizeof(serv_adr));
@@ -170,11 +158,12 @@ public:
 
 	}
 
-#define BUFFER_SIZE 4096
+	//接受到一个完整的包就返回；
+	//TODO:index标记是错误的！！！！！！！！！！！！！！！！！！！！！！！！！！！
 	int  DealCommand() {//处理接收到的网络命令
 		if (m_sock == -1)return -1;
 		//char buffer[1024] = "";
-		char* buffer = new char[BUFFER_SIZE];
+		char* buffer = m_buffer.data();
 		memset(buffer, 0, BUFFER_SIZE);
 		size_t index = 0;
 		while (true) {
@@ -216,7 +205,13 @@ public:
 		}
 		return false;
 	}
+
+	void CloseSocket() {
+		closesocket(m_sock);
+		m_sock = INVALID_SOCKET;//其实就是-1
+	}
 private:
+	std::vector<char> m_buffer;
 	SOCKET m_sock;
 	CPacket m_packet;
 	CClientSocket& operator=(const CClientSocket& ss) {}
@@ -228,7 +223,8 @@ private:
 			MessageBox(NULL, _T("无法初始化套接字环境,请检查网络设置"), _T("初始化错误"), MB_OK | MB_ICONERROR);
 			exit(0);
 		}
-		m_sock = socket(PF_INET, SOCK_STREAM, 0);
+		m_buffer.resize(BUFFER_SIZE);
+		//m_sock = socket(PF_INET, SOCK_STREAM, 0);
 	}
 	~CClientSocket() {
 		closesocket(m_sock);
