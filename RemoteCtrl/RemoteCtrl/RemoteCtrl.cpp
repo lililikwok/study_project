@@ -367,6 +367,44 @@ int UnlockMachine() {
     return 0;
 }
 
+int TestConnect() {
+    CPacket pack(1981,NULL,0);
+    CServerSocket::getInstance()->Send(pack);
+    return 0;
+}
+
+int ExcuteCommand(int nCmd) {
+    int ret = 0;
+	switch (nCmd) {
+	case 1://查看磁盘分区
+        ret = MakeDriverInfo();
+		break;
+	case 2://查看指定目录下的文件
+        ret = MakeDirectoryInfo();
+		break;
+	case 3://打开文件
+        ret = RunFile();
+		break;
+	case 4:// 下载文件
+        ret = DownloadFile();
+		break;
+	case 5://鼠标操作
+        ret = MouseEvent();
+		break;
+	case 6://发送屏幕内容，即发送屏幕的截图
+        ret = SendScreen();
+	case 7://锁机
+        ret = LockMachine();
+		break;
+	case 8://解锁
+        ret = UnlockMachine();
+		break;
+    case 1981 :
+        ret = TestConnect();
+        break;
+	}
+    return ret;
+}
 
 int main()
 {
@@ -385,65 +423,30 @@ int main()
         }
         else
         {
-            ////1 进度的可控性 2 对接的方便性 3 可行性评估，提早暴漏风险
-            //// TODO: socket,bind,listen,accept,read,write,close
-            ////套接字初始化
-            //CServerSocket* pserver = CServerSocket::getInstance();//服务器创建单例
-            //int count = 0;
-            //if (pserver->InitSocker() == false) {//初始化
-            //    MessageBox(NULL, _T("网络初始化异常，未能成功初始化，请检查网络状态！"), _T("网络初始化失败！"), MB_OK | MB_ICONERROR);
-            //    exit(0);
-            //}
-            //while (CServerSocket::getInstance() != NULL) {
-            //    if (pserver->AcceptClient() == false) {
-            //        if (count >= 3) {
-            //            MessageBox(NULL, _T("多次无法接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
-            //            exit(0);
-            //        }
-            //        MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
-            //        count++;
-            //    }
-            //    int ret = pserver->DealCommand();
-            //    //TODO:
-            //}
-            ////静态变量
-            ////在第一次调用的时候初始化，在程序销毁的时候被销毁
-            ////全局静态变量
-            ////在main函数之前被初始化，在整个程序结束之后被析构
-
-            int nCmd = 7;
-            switch (nCmd) {
-            case 1://查看磁盘分区
-                MakeDriverInfo();
-                break;
-            case 2://查看指定目录下的文件
-                MakeDirectoryInfo();
-                break;
-            case 3://打开文件
-                RunFile();
-                break;
-            case 4:// 下载文件
-                DownloadFile();
-                break;
-            case 5://鼠标操作
-                MouseEvent();
-                break;
-            case 6://发送屏幕内容，即发送屏幕的截图
-                SendScreen();
-            case 7://锁机
-                LockMachine();
-                //Sleep(50);
-                //LockMachine();
-                break;
-            case 8://解锁
-                UnlockMachine();
-                break;
+            CServerSocket* pserver = CServerSocket::getInstance();//服务器创建单例
+            int count = 0;
+            if (pserver->InitSocket() == false) {//初始化
+                MessageBox(NULL, _T("网络初始化异常，未能成功初始化，请检查网络状态！"), _T("网络初始化失败！"), MB_OK | MB_ICONERROR);
+                exit(0);
             }
-            Sleep(5000);
-            UnlockMachine();
-            TRACE("m_hWnd = %08X\r\n", dlg.m_hWnd);
-            while (dlg.m_hWnd != NULL) {
-                Sleep(10);
+            while (CServerSocket::getInstance() != NULL) {
+                if (pserver->AcceptClient() == false) {
+                    if (count >= 3) {
+                        MessageBox(NULL, _T("多次无法接入用户，结束程序！"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
+                        exit(0);
+                    }
+                    MessageBox(NULL, _T("无法正常接入用户，自动重试"), _T("接入用户失败！"), MB_OK | MB_ICONERROR);
+                    count++;
+                }
+                int ret = pserver->DealCommand();//这里的ret是要执行的功能的编号
+                if (ret > 0) {
+					ret = ExcuteCommand(pserver->GetPacket().sCmd);
+                    if (ret != 0) {//这里的ret是功能模块的执行结果输出，结果为0则是正常执行
+                        TRACE("执行命令失败：%d ret = %d\r\n",pserver->GetPacket().sCmd,ret);
+                    }
+                }
+
+                pserver->CloseClient();
             }
         }
     }

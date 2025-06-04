@@ -160,24 +160,31 @@ public:
 #define BUFFER_SIZE 4096
 	int  DealCommand() {//处理接收到的网络命令
 		if (m_client == -1)return -1;
-		//char buffer[1024] = "";
 		char* buffer = new char[BUFFER_SIZE];
+		if (buffer == NULL) {
+			TRACE("内存不足！\r\n");
+			return -2;
+		}
 		memset(buffer, 0, BUFFER_SIZE);
-		size_t index = 0;
+		size_t index = 0;//表示当前 buffer 中已经接收到的数据长度（有效字节数）
 		while (true) {
 			size_t len = recv(m_client, buffer + index, BUFFER_SIZE - index, 0);
 			if (len <= 0) {
+				delete[] buffer;
 				return -1;
 			}
 			index += len;
 			len = index;
+			//CPacket 通过修改 len 来告诉你：我有没有成功解析出一个完整的数据包？如果有，这个包在 buffer 里用了多少字节。没有返回0
 			m_packet = CPacket((BYTE*)buffer, len);
 			if (len > 0) {
-				memmove(buffer, buffer + len, BUFFER_SIZE - len);
-				index -= len;
+				memmove(buffer, buffer + len, BUFFER_SIZE - len);//内存移动，参数分别是：1.目标地址。 2.原地址。 3.要移动的字节数
+				index -= len;//index指向新的尾地址
+				delete[] buffer;
 				return m_packet.sCmd;
 			}
 		}
+		delete[] buffer;
 		return -1;
 	}
 	const bool Send(char* pData, int nSize) {
@@ -202,6 +209,15 @@ public:
 			return true;
 		}
 		return false;
+	}
+
+	void CloseClient() {
+		closesocket(m_client);
+		m_client = INVALID_SOCKET;
+	}
+
+	CPacket& GetPacket() {
+		return m_packet;
 	}
 private:
 	SOCKET m_sock;
