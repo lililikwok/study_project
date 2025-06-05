@@ -175,7 +175,6 @@ public:
 			}
 			index += len;
 			len = index;
-			//CPacket 通过修改 len 来告诉你：我有没有成功解析出一个完整的数据包？如果有，这个包在 buffer 里用了多少字节。没有返回0
 			m_packet = CPacket((BYTE*)buffer, len);
 			if (len > 0) {
 				memmove(buffer, buffer + len, BUFFER_SIZE - len);//内存移动，参数分别是：1.目标地址。 2.原地址。 3.要移动的字节数
