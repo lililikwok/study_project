@@ -210,6 +210,10 @@ public:
 		closesocket(m_sock);
 		m_sock = INVALID_SOCKET;//其实就是-1
 	}
+
+	CPacket* getPacket() {
+		return &m_packet;
+	}
 private:
 	std::vector<char> m_buffer;
 	SOCKET m_sock;
