@@ -3,8 +3,7 @@
 #include "framework.h"
 #include <string>
 #include <vector>
-#pragma pack(push)
-#pragma pack(1)//告诉编译器将每个成员变量的对齐设为1字节
+#pragma pack(push, 1)
 #define BUFFER_SIZE 4096
 
 class CPacket
@@ -37,46 +36,52 @@ public:
 		strData = pack.strData;
 		sSum = pack.sSum;
 	}
-	CPacket(const BYTE* pData, size_t& nSize) {//找包头
+	CPacket(const BYTE* pData, size_t& nSize)
+	{
 		size_t i = 0;
-		for (; i < nSize; i++) {
+		while (i + 2 <= nSize) {
 			if (*(WORD*)(pData + i) == 0xFEFF) {
-				sHead = *(WORD*)(pData + i);
-				i += 2;
 				break;
 			}
+			++i;
 		}
-		if ((i + 4 + 2 + 2) > nSize) {//加上4字节长度字段，命令字段（2字节），校验和字段（2字节）包数据可能不全，或者包头未能全部接收到
-			nSize = 0;
-			return;
-		}
-		nLength = *(DWORD*)(pData + i); i += 4;
-		if (nLength + i > nSize) {//包未完全接收到，就返回，解析失败
-			nSize = 0;
-			return;
+		if (i + 2 + 4 + 2 + 2 > nSize) {
+			nSize = 0; return;
 		}
 
-		sCmd = *(WORD*)(pData + i); i += 2;//pData是一个指针，(WORD*)是将一个指针转换成一个指向WORD类型的指针，再加*是解引用
-		if (nLength > 4) {
-			strData.resize(nLength - 2 - 2);
-			memcpy((void*)strData.c_str(), pData + i, nLength - 4);
-			i += nLength - 4;
+		sHead = *(WORD*)(pData + i); i += 2;
+		nLength = *(DWORD*)(pData + i); i += 4;
+
+		if (i + nLength > nSize) { // 注意：必须确保包体完整
+			nSize = 0; return;
 		}
-		sSum = *(WORD*)(pData + i);
-		i += 2;
+
+		sCmd = *(WORD*)(pData + i); i += 2;
+
+		size_t dataSize = nLength - 2 - 2; // 去掉sCmd和sSum
+		strData.resize(dataSize);
+		if (dataSize > 0) {
+			memcpy(&strData[0], pData + i, dataSize);
+			i += dataSize;
+		}
+
+		sSum = *(WORD*)(pData + i); i += 2;
+
 		WORD sum = 0;
-		for (size_t j = 0; j < strData.size(); j++) {
-			sum += BYTE(strData[j]) & 0xFF;
+		for (size_t j = 0; j < strData.size(); ++j) {
+			sum += (BYTE)strData[j];
 		}
+
 		if (sum == sSum) {
-			nSize = i;//head,length,data...
-			return;
+			nSize = i; // 解析成功
 		}
-		else
-			nSize = 0;
+		else {
+			nSize = 0; // 校验失败
+		}
 	}
+
 	~CPacket() {}
-	CPacket& operator=(const CPacket& pack) {
+	CPacket& operator=(const CPacket& pack) {	
 		if (this != &pack) {
 			sHead = pack.sHead;
 			nLength = pack.nLength;
@@ -90,6 +95,7 @@ public:
 	int Size() {//包数据的大小
 		return nLength + 6;
 	}
+	//返回一个Cpacket的数据组成的一个字符
 	const char* Data() {//将CPacket对象的各个部分组合起来，并返回指向序列开头的const char*指针
 		strOut.resize(nLength + 6);
 		BYTE* pData = (BYTE*)strOut.c_str();//对pData操作影响strOut内容
@@ -125,6 +131,19 @@ typedef struct MouseEvent {
 
 std::string GetErrorInfo(int wsaErrCode);
 
+typedef struct file_info {
+	file_info() {
+		IsInvalid = FALSE;
+		IsDirectory = -1;
+		HasNext = TRUE;
+		memset(szFileName, 0, sizeof(szFileName));
+	}
+	BOOL IsInvalid;//是否有效
+	char szFileName[256];//文件名
+	BOOL HasNext;//是否还有后续，0没有1有
+	BOOL IsDirectory;//是否为目录，0否1是
+
+}FILEINFO, * PFILEINFO;
 
 class CClientSocket
 {
@@ -157,31 +176,42 @@ public:
 		return true;
 
 	}
+	int DealCommand() {
+		if (m_sock == -1) return -1;
 
-	//接受到一个完整的包就返回；
-	//TODO:index标记是错误的！！！！！！！！！！！！！！！！！！！！！！！！！！！
-	int  DealCommand() {//处理接收到的网络命令
-		if (m_sock == -1)return -1;
-		//char buffer[1024] = "";
-		char* buffer = m_buffer.data();
-		memset(buffer, 0, BUFFER_SIZE);
-		size_t index = 0;
+		// 循环直到从缓冲区中成功解析出一个完整的数据包
 		while (true) {
-			size_t len = recv(m_sock, buffer + index, BUFFER_SIZE - index, 0);
-			if (len <= 0) {
+			// 1. 尝试从现有缓冲区数据中解析
+			size_t parseSize = m_bufferUsed;
+			CPacket packet((BYTE*)m_buffer.data(), parseSize);
+
+			if (parseSize > 0) { // 如果构造函数成功解析并消耗了数据
+				m_packet = packet; // 保存解析出的包
+
+				// 从缓冲区移除已处理的数据
+				memmove(m_buffer.data(), m_buffer.data() + parseSize, m_bufferUsed - parseSize);
+				m_bufferUsed -= parseSize;
+
+				TRACE("[Client] 解包成功，命令: %d，数据大小: %d\n", m_packet.sCmd, m_packet.strData.size());
+				return m_packet.sCmd; // 成功，返回命令
+			}
+
+			// 2. 如果缓冲区数据不够，从网络接收更多
+			if (m_bufferUsed >= BUFFER_SIZE) {
+				m_bufferUsed = 0; // 缓冲区满了还解不出包，数据异常，清空
+				TRACE("[Client] Buffer full but cannot parse a packet. Clearing buffer.\n");
 				return -1;
 			}
-			index += len;
-			len = index;
-			m_packet = CPacket((BYTE*)buffer, len);
-			if (len > 0) {
-				memmove(buffer, buffer + len, BUFFER_SIZE - len);
-				index -= len;
-				return m_packet.sCmd;
+
+			int recvLen = recv(m_sock, m_buffer.data() + m_bufferUsed, BUFFER_SIZE - m_bufferUsed, 0);
+			if (recvLen <= 0) {
+				TRACE("[Client] recv failed or connection closed. Error: %d\n", WSAGetLastError());
+				return -1;
 			}
+			m_bufferUsed += recvLen; // 更新缓冲区中的数据量
 		}
-		return -1;
 	}
+
 	const bool Send(char* pData, int nSize) {
 		if (m_sock == -1)return false;
 		return (send(m_sock, pData, nSize, 0)) > 0;
@@ -211,10 +241,11 @@ public:
 		m_sock = INVALID_SOCKET;//其实就是-1
 	}
 
-	CPacket* getPacket() {
-		return &m_packet;
+	CPacket getPacket() {
+		return m_packet;
 	}
 private:
+	size_t m_bufferUsed;      // 用这个替换 static index
 	std::vector<char> m_buffer;
 	SOCKET m_sock;
 	CPacket m_packet;
@@ -228,7 +259,7 @@ private:
 			exit(0);
 		}
 		m_buffer.resize(BUFFER_SIZE);
-		//m_sock = socket(PF_INET, SOCK_STREAM, 0);
+		m_bufferUsed = 0; // 初始化
 	}
 	~CClientSocket() {
 		closesocket(m_sock);

@@ -2,9 +2,7 @@
 #include "pch.h"
 #include "framework.h"
 
-#pragma pack(push)
-#pragma pack(1)//告诉编译器将每个成员变量的对齐设为1字节
-
+#pragma pack(push, 1) // 设置结构体按1字节对齐
 class CPacket
 {
 public:
@@ -35,6 +33,7 @@ public:
 		strData = pack.strData;
 		sSum = pack.sSum;
 	}
+	//返回nSize：表示传进来的buffer使用了几个字节，如果数据不完整或者其他的错误，返回0，不对buffer进行操作
 	CPacket(const BYTE* pData, size_t& nSize) {//找包头
 		size_t i = 0;
 		for (; i < nSize; i++) {
@@ -121,6 +120,19 @@ typedef struct MouseEvent {
 	POINT ptXY;//坐标
 }MOUSEEV, * PMOUSEEV;
 
+typedef struct file_info {
+	file_info() {
+		IsInvalid = FALSE;
+		IsDirectory = -1;
+		HasNext = TRUE;
+		memset(szFileName, 0, sizeof(szFileName));
+	}
+	BOOL IsInvalid;//是否有效
+	char szFileName[256];//文件名
+	BOOL HasNext;//是否还有后续，0没有1有
+	BOOL IsDirectory;//是否为目录，0否1是
+}FILEINFO, * PFILEINFO;
+
 class CServerSocket
 {
 public:
@@ -157,8 +169,11 @@ public:
 		return true;
 
 	}
+
 #define BUFFER_SIZE 4096
-	int  DealCommand() {//处理接收到的网络命令
+	//当收到信息的后，调用该函数将socket中的数据打成包
+	//处理接收到的网络命令
+	int  DealCommand() {
 		if (m_client == -1)return -1;
 		char* buffer = new char[BUFFER_SIZE];
 		if (buffer == NULL) {
@@ -175,7 +190,7 @@ public:
 			}
 			index += len;
 			len = index;
-			m_packet = CPacket((BYTE*)buffer, len);
+			m_packet = CPacket((BYTE*)buffer, len);//这里的len变成了：打包使用了多少字节
 			if (len > 0) {
 				memmove(buffer, buffer + len, BUFFER_SIZE - len);//内存移动，参数分别是：1.目标地址。 2.原地址。 3.要移动的字节数
 				index -= len;//index指向新的尾地址
