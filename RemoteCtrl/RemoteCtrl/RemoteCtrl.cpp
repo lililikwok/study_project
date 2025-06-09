@@ -8,7 +8,8 @@
 #include <direct.h>
 #include <atlimage.h>
 #include <winbase.h>
-
+#include <iostream>
+#include <string>
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -49,59 +50,70 @@ int MakeDriverInfo() {//创建裆前系统可用的磁盘分区信息,1代表A�
 #include <io.h>
 #include <list>
 
-typedef struct file_info {
-    file_info() {
-        IsInvalid = FALSE;
-        IsDirectory = -1;
-        HasNext = TRUE;
-        memset(szFileName, 0, sizeof(szFileName));
-    }
-    BOOL IsInvalid;//是否有效
-    char szFileName[256];//文件名
-    BOOL HasNext;//是否还有后续，0没有1有
-    BOOL IsDirectory;//是否为目录，0否1是
+int MakeDirectoryInfo() {
+	std::string strPath;
+	if (!CServerSocket::getInstance()->GetFilePath(strPath)) {
+		OutputDebugString(_T("[Server] 命令不是获取文件列表\n"));
+		return -1;
+	}
 
-}FILEINFO, * PFILEINFO;
+	OutputDebugStringA(("[Server] 收到目录请求: " + strPath + "\n").c_str());
 
-int MakeDirectoryInfo() {//用来收集特定路径下的文件和目录信息，并在发生错误的时候输出调试信息
-    std::string strPath;
-    //std::initializer_list<FILEINFO> lstFileInfos;
-    if (CServerSocket::getInstance()->GetFilePath(strPath) == false) {
-        OutputDebugString(_T("当前的命令，不是获取文件列表，命令解析错误"));
-        return -1;
-    }
-    if (_chdir(strPath.c_str()) != 0) {//更改当前工作目录为strpath指向的路径
-        FILEINFO finfo;//当目录由于权限不足无法切换时
-        finfo.IsInvalid = TRUE;//文件信息无效
-        finfo.IsDirectory = TRUE;//是目录
-        finfo.HasNext = FALSE;//没有更多的信息要发送
-        memcpy(finfo.szFileName, strPath.c_str(), strPath.size());// 将 strPath 中的字符串复制到 finfo.szFileName 中，作为无法访问的路径名
-        //lstFileInfos.pushback(finfo);
-        CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-        CServerSocket::getInstance()->Send(pack);
-        OutputDebugString(_T("没有权限访问目录"));
-        return -2;
-    }
-    _finddata_t fdata;//存储文件查找信息
-    int hfind = 0;
-    if ((hfind = _findfirst("*", &fdata)) == -1) {
-        OutputDebugString(_T("没有找到任何文件"));
-        return -3;
-    }
-    do {
-        FILEINFO finfo;
-        finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;//判断当前处理的文件项是不是目录
-        memcpy(finfo.szFileName, fdata.name, strlen(fdata.name));
-        //lstFileInfos.push_back(finfo);
-        CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-        CServerSocket::getInstance()->Send(pack);
-    } while (!_findnext(hfind, &fdata));//获取下一个文件项信息
-    //发送信息到客户端 
-    FILEINFO finfo;
-    finfo.HasNext = FALSE;
-    CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
-    CServerSocket::getInstance()->Send(pack);
-    return 0;
+	if (_chdir(strPath.c_str()) != 0) {
+		FILEINFO finfo = {};
+		finfo.HasNext = FALSE;
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
+		CServerSocket::getInstance()->Send(pack);
+		OutputDebugString(_T("[Server] 无权限访问目录\n"));
+		return -2;
+	}
+
+	_finddata_t fdata;
+	__int64 hfind = _findfirst("*", &fdata);
+	if (hfind == -1) {
+		OutputDebugString(_T("[Server] 没有找到任何文件\n"));
+		FILEINFO finfo = {};
+		finfo.HasNext = FALSE;
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
+		CServerSocket::getInstance()->Send(pack);
+		return -3;
+	}
+
+	do {
+		FILEINFO finfo = {};
+		finfo.HasNext = TRUE;
+		finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;
+		strncpy(finfo.szFileName, fdata.name, sizeof(finfo.szFileName) - 1);
+
+		// 打包
+		CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
+		CServerSocket::getInstance()->Send(pack);
+        
+		// 调试输出（控制台 + OutputDebugString）
+        PFILEINFO aab = (PFILEINFO)pack.strData.c_str();
+		std::string log = "[Server] 发送文件项: ";
+		log += finfo.szFileName;
+		log += " | Dir: ";
+		log += std::to_string(aab->IsDirectory);
+		log += " | Size: ";
+		log += std::to_string(pack.strData.size());
+		log += " | Name: ";
+		log += aab->szFileName;
+		log += " | HasNext: ";
+        PFILEINFO aa = (PFILEINFO)pack.strData.c_str();
+		log += std::to_string(aa->HasNext);
+		OutputDebugStringA((log + "\n").c_str());
+
+	} while (_findnext(hfind, &fdata) == 0);
+
+	// 最后一包：HasNext = FALSE
+	FILEINFO finfo = {};
+	finfo.HasNext = FALSE;
+	CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
+	CServerSocket::getInstance()->Send(pack);
+	OutputDebugString(_T("[Server] 已发送结束标志 (HasNext = 0)\n"));
+
+	return 0;
 }
 
 int RunFile() {
