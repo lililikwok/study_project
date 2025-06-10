@@ -104,6 +104,9 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)
 	ON_NOTIFY(NM_DBLCLK, IDC_TREE_DIR, &CRemoteClientDlg::OnNMDblclkTreeDir)
 	ON_NOTIFY(NM_CLICK, IDC_TREE_DIR, &CRemoteClientDlg::OnNMClickTreeDir)
 	ON_NOTIFY(NM_RCLICK, IDC_LIST_FILE, &CRemoteClientDlg::OnNMRClickListFile)
+	ON_COMMAND(ID_DOWNLOAD_FILE, &CRemoteClientDlg::OnDownloadFile)
+	ON_COMMAND(ID_DELETE_FILE, &CRemoteClientDlg::OnDeleteFile)
+	ON_COMMAND(ID_RUN_FILE, &CRemoteClientDlg::OnRunFile)
 END_MESSAGE_MAP()
 
 
@@ -329,4 +332,72 @@ void CRemoteClientDlg::OnNMRClickListFile(NMHDR* pNMHDR, LRESULT* pResult)
 	if (pPupup != NULL) {
 		pPupup->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON, ptMouse.x, ptMouse.y, this);
 	}
+}
+
+void CRemoteClientDlg::OnDownloadFile()
+{
+	int nListSelected = m_List.GetSelectionMark();//从列表视图控件 m_List 中获取当前选中项的索引
+	CString strFile = m_List.GetItemText(nListSelected, 0);//用刚刚拿到的索引来拿选中项的文件名
+
+	long long nCount = 0;
+	//CFileDialog 是 MFC (Microsoft Foundation Classes) 库中用于创建文件对话框的类
+	//FALSE 参数用于指定对话框的模式，这里 FALSE 表示对话框是“保存文件”模式。如果是 TRUE，则表示为“打开文件”模式。
+	//"*" 参数是默认的文件扩展名。在这种情况下，它被设置为一个通配符，这意味着所有文件扩展名都可以。
+	//m_List.GetItemText(nListSelected, 0) 获得列表控件中当前被选中的项的文本，通常表示文件名，将用作对话框显示的默认文件名。
+	//OFN_HIDEREADONLY 表示隐藏只读选项。
+	//OFN_OVERWRITEPROMPT 表示在用户选择要保存到一个已经存在的文件时，提示用户确认是否覆盖原文件。
+
+	CFileDialog dlg(FALSE, "*",
+		strFile,
+		OFN_HIDEREADONLY | OFN_OVERWRITEPROMPT,
+		NULL, this);
+	//以模态方式显示对话框。如果用户点击“保存”按钮（通常响应为 IDOK）
+	// 则 DoModal 方法会返回 IDOK，代码将进入到 if 语句块内执行
+	if (dlg.DoModal() == IDOK) {
+		//开个文件把接收到的文件写到本地
+		FILE* pFile = fopen(dlg.GetPathName(), "wb+");//以二进制模式打开文件，允许读写操作
+		if (pFile == NULL) {
+			AfxMessageBox(_T("本地没有权限保存该文件，或者文件无法创建"));
+			return;
+		}
+		HTREEITEM hSelected = m_Tree.GetSelectedItem();//获取选中项的句柄
+		strFile = GetPath(hSelected) + strFile;//父项和该项的路径，构成完整的文件路径
+		TRACE("%s\r\n", LPCSTR(strFile));
+		int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+		if (ret < 0) {
+			AfxMessageBox("执行下载命令失败");
+			TRACE("执行下载失败：ret = %d\r\n", ret);
+			return;
+		}
+		CClientSocket* pClient = CClientSocket::getInstance();//获取单例模式中的实例
+		long long nLength = *(long long*)pClient->getPacket().strData.c_str();
+		if (nLength == 0) {
+			AfxMessageBox("文件长度为0或者无法读取文件");
+			return;
+		}
+
+		while (nCount < nLength) {//已接收的数据量未达到文件总数据量
+			ret = pClient->DealCommand();
+			if (ret < 0) {
+				AfxMessageBox("传输失败");
+				TRACE("传输失败: ret = %d\r\n", ret);
+				break;
+			}
+			fwrite(pClient->getPacket().strData.c_str(), 1, pClient->getPacket().strData.size(), pFile);
+			nCount += pClient->getPacket().strData.size();//更新已经接收到的数据量
+		}
+		fclose(pFile);
+		pClient->CloseSocket();
+	}
+}
+
+
+void CRemoteClientDlg::OnDeleteFile()
+{
+	
+}
+
+void CRemoteClientDlg::OnRunFile()
+{
+	
 }
