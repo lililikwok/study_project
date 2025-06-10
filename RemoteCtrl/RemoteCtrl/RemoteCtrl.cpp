@@ -10,6 +10,7 @@
 #include <winbase.h>
 #include <iostream>
 #include <string>
+#include <sstream>
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
@@ -91,18 +92,18 @@ int MakeDirectoryInfo() {
         
 		// 调试输出（控制台 + OutputDebugString）
         PFILEINFO aab = (PFILEINFO)pack.strData.c_str();
-		std::string log = "[Server] 发送文件项: ";
-		log += finfo.szFileName;
-		log += " | Dir: ";
-		log += std::to_string(aab->IsDirectory);
-		log += " | Size: ";
-		log += std::to_string(pack.strData.size());
-		log += " | Name: ";
-		log += aab->szFileName;
-		log += " | HasNext: ";
-        PFILEINFO aa = (PFILEINFO)pack.strData.c_str();
-		log += std::to_string(aa->HasNext);
-		OutputDebugStringA((log + "\n").c_str());
+		//std::string log = "[Server] 发送文件项: ";
+		//log += finfo.szFileName;
+		//log += " | Dir: ";
+		//log += std::to_string(aab->IsDirectory);
+		//log += " | Size: ";
+		//log += std::to_string(pack.strData.size());
+		//log += " | Name: ";
+		//log += aab->szFileName;
+		//log += " | HasNext: ";
+  //      PFILEINFO aa = (PFILEINFO)pack.strData.c_str();
+		//log += std::to_string(aa->HasNext);
+		//OutputDebugStringA((log + "\n").c_str());
 
 	} while (_findnext(hfind, &fdata) == 0);
 
@@ -385,6 +386,49 @@ int TestConnect() {
     return 0;
 }
 
+int DeleteLocalFile() {
+	// 1. 从网络包里取出要删除的路径
+	std::string strPath;
+	CServerSocket::getInstance()->GetFilePath(strPath);
+
+	// 2. 调用 DeleteFile
+	BOOL success = DeleteFileA(strPath.c_str());  // ANSI 版本，如果你用 Unicode 则用 DeleteFileW
+
+	if (!success) {
+		// 3. 出错时获取错误码
+		DWORD err = GetLastError();
+
+		// 4. 将错误码格式化成可读字符串
+		LPVOID msgBuf = nullptr;
+		FormatMessageA(
+			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+			NULL,
+			err,
+			MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+			(LPSTR)&msgBuf,
+			0, NULL);
+
+		std::ostringstream oss;
+		oss << "DeleteFile failed. Path: " << strPath
+			<< ", Error " << err << ": " << (msgBuf ? (LPSTR)msgBuf : "Unknown");
+
+		// 5. 输出到调试窗口，也可以发送给客户端
+		OutputDebugStringA(oss.str().c_str());
+		if (msgBuf) LocalFree(msgBuf);
+
+		// 可以把错误信息也打包回客户端，方便前端展示
+		std::string errStr = oss.str();
+		CPacket errPack(9, (BYTE*)errStr.c_str(), errStr.size());
+		CServerSocket::getInstance()->Send(errPack);
+
+		return -1;
+	}
+
+	// 6. 删除成功，给客户端发送确认包
+	CPacket pack(9, NULL, 0);
+	CServerSocket::getInstance()->Send(pack);
+	return 0;
+}
 int ExcuteCommand(int nCmd) {
     int ret = 0;
 	switch (nCmd) {
@@ -411,6 +455,9 @@ int ExcuteCommand(int nCmd) {
 	case 8://解锁
         ret = UnlockMachine();
 		break;
+    case 9://删除文件
+        ret = DeleteLocalFile();
+        break;
     case 1981 :
         ret = TestConnect();
         break;

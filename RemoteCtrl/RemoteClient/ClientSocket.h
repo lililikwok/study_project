@@ -192,7 +192,7 @@ public:
 				memmove(m_buffer.data(), m_buffer.data() + parseSize, m_bufferUsed - parseSize);
 				m_bufferUsed -= parseSize;
 
-				TRACE("[Client] 解包成功，命令: %d，数据大小: %d\n", m_packet.sCmd, m_packet.strData.size());
+				//TRACE("[Client] 解包成功，命令: %d，数据大小: %d\n", m_packet.sCmd, m_packet.strData.size());
 				return m_packet.sCmd; // 成功，返回命令
 			}
 
