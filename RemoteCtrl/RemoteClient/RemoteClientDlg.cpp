@@ -244,6 +244,39 @@ CString CRemoteClientDlg::GetPath(HTREEITEM hTree) {//返回值代表从树视�
 	return strRet;//包含了从起始节点到树的根的完整路径
 }
 
+void CRemoteClientDlg::LoadFileCurrent()
+{
+	HTREEITEM hTree = m_Tree.GetSelectedItem();
+	CString strPath = GetPath(hTree);
+	m_List.DeleteAllItems();
+	int nCmd = SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());
+	if (nCmd < 0) {
+		AfxMessageBox(_T("命令发送或接收初始响应失败"));
+		return;
+	}
+	CClientSocket* pClient = CClientSocket::getInstance();
+	while (true) {
+		CPacket currentPacket = pClient->getPacket();
+		PFILEINFO pInfo = (PFILEINFO)currentPacket.strData.c_str();
+		if (!pInfo->HasNext) {
+			TRACE("[Client] 收到结束标志，目录传输完成。\n");
+			pClient->CloseSocket();
+			break;
+		}
+		CString name(pInfo->szFileName);
+		if (!(pInfo->IsDirectory && (name == _T(".") || name == _T("..")))) {
+			if (pInfo->IsDirectory) {
+			}
+			else
+				m_List.InsertItem(0, pInfo->szFileName);
+		}
+		if (pClient->DealCommand() < 0) {
+			AfxMessageBox(_T("与服务器断开连接或接收后续数据出错!"));
+			break;
+		}
+	}
+
+}
 void CRemoteClientDlg::LoadFileInfo()
 {
 	CPoint ptMouse;
@@ -284,8 +317,8 @@ void CRemoteClientDlg::LoadFileInfo()
 
 		// 处理当前包的数据
 		CString name(pInfo->szFileName);
-		TRACE("[Client] 收到文件项: %s | IsDir: %d | HasNext: %d\n",
-			name, pInfo->IsDirectory, pInfo->HasNext);
+		//TRACE("[Client] 收到文件项: %s | IsDir: %d | HasNext: %d\n",
+			//name, pInfo->IsDirectory, pInfo->HasNext);
 
 		if (!(pInfo->IsDirectory && (name == _T(".") || name == _T("..")))) {
 			if (pInfo->IsDirectory) {
@@ -303,6 +336,8 @@ void CRemoteClientDlg::LoadFileInfo()
 		}
 	}
 }
+
+
 
 void CRemoteClientDlg::OnNMDblclkTreeDir(NMHDR* pNMHDR, LRESULT* pResult)
 {
@@ -394,10 +429,27 @@ void CRemoteClientDlg::OnDownloadFile()
 
 void CRemoteClientDlg::OnDeleteFile()
 {
-	
+	HTREEITEM hSelected = m_Tree.GetSelectedItem();
+	CString strPath = GetPath(hSelected);
+	int nSelected = m_List.GetSelectionMark();
+	CString strFile = m_List.GetItemText(nSelected, 0);
+	strFile = strPath + strFile;
+	int ret = SendCommandPacket(9, true, (BYTE*)(LPCTSTR)strFile, strFile.GetLength());
+	if (ret < 0) {
+		AfxMessageBox("删除文件命令执行失败！！");
+	}
+	LoadFileCurrent();
 }
 
 void CRemoteClientDlg::OnRunFile()
 {
-	
+	HTREEITEM hSelected = m_Tree.GetSelectedItem();
+	CString strPath = GetPath(hSelected);
+	int nSelected = m_List.GetSelectionMark();
+	CString strFile = m_List.GetItemText(nSelected, 0);
+	strFile = strPath + strFile;
+	int ret = SendCommandPacket(3, true, (BYTE*)(LPCTSTR)strFile, strFile.GetLength());
+	if (ret < 0) {
+		AfxMessageBox("打开文件命令执行失败！！");
+	}
 }
