@@ -197,7 +197,7 @@ public:
 			}
 
 			// 2. 如果缓冲区数据不够，从网络接收更多
-			if (m_bufferUsed >= BUFFER_SIZE) {
+			if (m_bufferUsed >= BUFFER_SIZE) {//我们只考虑socket中只有正常的数据，而且这一步按照我们的设计永远不会出现
 				m_bufferUsed = 0; // 缓冲区满了还解不出包，数据异常，清空
 				TRACE("[Client] Buffer full but cannot parse a packet. Clearing buffer.\n");
 				return -1;

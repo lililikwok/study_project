@@ -3,8 +3,8 @@
 //
 
 #pragma once
-
-
+#include "CStatusDlg.h"
+#define WM_SEND_PACKET (WM_USER + 1) //第一步，自定义消息的ID
 // CRemoteClientDlg 对话框
 class CRemoteClientDlg : public CDialogEx
 {
@@ -23,6 +23,8 @@ public:
 
 
 private:
+	static void threadEntryForDownFile(void* arg);
+	void threadDownFile();
 	//1 查看磁盘分区 
 	//2 查看指定目录下的文件
 	//3 打开文件
@@ -48,7 +50,8 @@ protected:
 	afx_msg void OnSysCommand(UINT nID, LPARAM lParam);
 	afx_msg void OnPaint();
 	afx_msg HCURSOR OnQueryDragIcon();
-	DECLARE_MESSAGE_MAP()
+	DECLARE_MESSAGE_MAP();
+	CStatusDlg m_dlgStatus;
 public:
 	afx_msg void OnBnClickedBtnText();
 	DWORD m_server_address;
@@ -63,4 +66,8 @@ public:
 	afx_msg void OnDownloadFile();
 	afx_msg void OnDeleteFile();
 	afx_msg void OnRunFile();
+	//第二步，定义自定义消息响应函数
+	afx_msg LRESULT OnSendPacket(WPARAM wParam, LPARAM lParam);//在类的声明中用来定义一个消息处理函数。这个函数是为了响应自定义或已定义的 Windows 消息
+	//OnSendPacket: 这是函数的名称。按照MFC的命名惯例，消息处理函数的名称通常以 "On" 开头，后跟消息的名称。
+
 };

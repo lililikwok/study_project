@@ -47,9 +47,6 @@ END_MESSAGE_MAP()
 
 
 // CRemoteClientDlg 对话框
-
-
-
 CRemoteClientDlg::CRemoteClientDlg(CWnd* pParent /*=nullptr*/)
 	: CDialogEx(IDD_REMOTECLIENT_DIALOG, pParent)
 	, m_server_address(0)
@@ -67,9 +64,11 @@ void CRemoteClientDlg::DoDataExchange(CDataExchange* pDX)
 	DDX_Control(pDX, IDC_LIST_FILE, m_List);
 }
 
+
+
 int CRemoteClientDlg::SendCommandPacket(int nCmd,bool bAutoClose, BYTE* pData, size_t nLength)
 {
-	UpdateData();
+	 
 	CClientSocket* pClient = CClientSocket::getInstance();
 	bool ret = pClient->InitSocket(m_server_address, atoi((LPCTSTR)m_nPort));//TODO:返回值的处理
 	if (!ret) {
@@ -107,6 +106,10 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)
 	ON_COMMAND(ID_DOWNLOAD_FILE, &CRemoteClientDlg::OnDownloadFile)
 	ON_COMMAND(ID_DELETE_FILE, &CRemoteClientDlg::OnDeleteFile)
 	ON_COMMAND(ID_RUN_FILE, &CRemoteClientDlg::OnRunFile)
+	ON_MESSAGE(WM_SEND_PACKET, &CRemoteClientDlg::OnSendPacket)//第三步，在消息映射表里面注册消息
+	//将 Windows 消息（在这里是 WM_SEND_PACKET）映射到特定消息处理函数（在这里是 CRemoteClientDlg::OnSendPacket）的一种方法。这段代码通常在一个消息映射宏列表中。
+	//WM_SEND_PACKET是用户自定义的待处理的消息
+	//&CRemoteClientDlg::OnSendPacket是用来处理这个消息的函数。这个函数必须是声明在接收处理消息的类（在这里是 CRemoteClientDlg）内的成员函数。
 END_MESSAGE_MAP()
 
 
@@ -149,7 +152,8 @@ BOOL CRemoteClientDlg::OnInitDialog()
 	m_nPort = _T("9527");
 	m_server_address = 0x7F000001;
 	UpdateData(FALSE);
-
+	m_dlgStatus.Create(IDD_DLG_STATUS, this);//因为放在别的地方可能会创建两次引发异常，所以CREATE放在主类的构造函数里面
+	m_dlgStatus.FlashWindow(SW_HIDE);
 	return TRUE;  // 除非将焦点设置到控件，否则返回 TRUE
 }
 
@@ -292,6 +296,9 @@ void CRemoteClientDlg::LoadFileInfo()
 	m_List.DeleteAllItems();
 	CString strPath = GetPath(hTreeSelected);
 
+	// 初始化文件计数器
+	int nFileCount = 0;
+
 	// 1. 调用你不想修改的 SendCommandPacket 函数。
 	// 函数执行后，第一个文件包已经由 DealCommand 内部调用并存放在 pClient->m_packet 中。
 	int nCmd = SendCommandPacket(2, false, (BYTE*)(LPCTSTR)strPath, strPath.GetLength());
@@ -310,32 +317,42 @@ void CRemoteClientDlg::LoadFileInfo()
 
 		// 检查是否是结束包
 		if (!pInfo->HasNext) {
-			TRACE("[Client] 收到结束标志，目录传输完成。\n");
+			// 打印接收结束信息
+			TRACE(_T("[Client] 收到结束标志，目录传输完成。\n"));
+			// 打印最终统计的文件数量
+			TRACE(_T("[Client] 本次接收的文件总数: %d\n"), nFileCount);
 			pClient->CloseSocket();
 			break;
 		}
 
 		// 处理当前包的数据
 		CString name(pInfo->szFileName);
-		//TRACE("[Client] 收到文件项: %s | IsDir: %d | HasNext: %d\n",
-			//name, pInfo->IsDirectory, pInfo->HasNext);
-
+		// 排除 "." 和 ".." 目录
 		if (!(pInfo->IsDirectory && (name == _T(".") || name == _T("..")))) {
 			if (pInfo->IsDirectory) {
 				HTREEITEM hTemp = m_Tree.InsertItem(name, hTreeSelected, TVI_LAST);
 				m_Tree.InsertItem(_T(""), hTemp, TVI_LAST);
 			}
-			else
+			else {
+				// 插入到列表
 				m_List.InsertItem(0, pInfo->szFileName);
+				// 增加文件计数
+				++nFileCount;
+				// 用 TRACE 打印当前收到的文件和累积计数（可选）
+				TRACE(_T("[Client] 收到文件: %s | 当前已接收文件数: %d\n"), pInfo->szFileName, nFileCount);
+			}
 		}
 
 		// 3. 在循环末尾，调用 DealCommand 获取下一个数据包，为下一次循环做准备
 		if (pClient->DealCommand() < 0) {
 			AfxMessageBox(_T("与服务器断开连接或接收后续数据出错!"));
+			// 在错误情况下也可以打印当前统计
+			TRACE(_T("[Client] 接收过程中出错，当前已接收文件总数: %d\n"), nFileCount);
 			break;
 		}
 	}
 }
+
 
 
 
@@ -369,7 +386,17 @@ void CRemoteClientDlg::OnNMRClickListFile(NMHDR* pNMHDR, LRESULT* pResult)
 	}
 }
 
-void CRemoteClientDlg::OnDownloadFile()
+
+
+void CRemoteClientDlg::threadEntryForDownFile(void* arg)
+{
+	CRemoteClientDlg* thiz = (CRemoteClientDlg*)arg;
+	thiz->threadDownFile();
+	_endthread();
+
+}
+
+void CRemoteClientDlg::threadDownFile()
 {
 	int nListSelected = m_List.GetSelectionMark();//从列表视图控件 m_List 中获取当前选中项的索引
 	CString strFile = m_List.GetItemText(nListSelected, 0);//用刚刚拿到的索引来拿选中项的文件名
@@ -393,37 +420,60 @@ void CRemoteClientDlg::OnDownloadFile()
 		FILE* pFile = fopen(dlg.GetPathName(), "wb+");//以二进制模式打开文件，允许读写操作
 		if (pFile == NULL) {
 			AfxMessageBox(_T("本地没有权限保存该文件，或者文件无法创建"));
+			m_dlgStatus.ShowWindow(SW_HIDE);//将 m_dlgStatus 对话框隐藏起来
+			EndWaitCursor();
 			return;
 		}
 		HTREEITEM hSelected = m_Tree.GetSelectedItem();//获取选中项的句柄
 		strFile = GetPath(hSelected) + strFile;//父项和该项的路径，构成完整的文件路径
 		TRACE("%s\r\n", LPCSTR(strFile));
-		int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
-		if (ret < 0) {
-			AfxMessageBox("执行下载命令失败");
-			TRACE("执行下载失败：ret = %d\r\n", ret);
-			return;
-		}
 		CClientSocket* pClient = CClientSocket::getInstance();//获取单例模式中的实例
-		long long nLength = *(long long*)pClient->getPacket().strData.c_str();
-		if (nLength == 0) {
-			AfxMessageBox("文件长度为0或者无法读取文件");
-			return;
-		}
-
-		while (nCount < nLength) {//已接收的数据量未达到文件总数据量
-			ret = pClient->DealCommand();
+		do {
+			//int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+			int ret = SendMessage(WM_SEND_PACKET, 4 << 1 | 0, (LPARAM)(LPCSTR)strFile);//SendMessage 函数是一个Windows API，用于发送一个消息到某个窗口的消息队列，
 			if (ret < 0) {
-				AfxMessageBox("传输失败");
-				TRACE("传输失败: ret = %d\r\n", ret);
+				AfxMessageBox("执行下载命令失败");
+				TRACE("执行下载失败：ret = %d\r\n", ret);
 				break;
 			}
-			fwrite(pClient->getPacket().strData.c_str(), 1, pClient->getPacket().strData.size(), pFile);
-			nCount += pClient->getPacket().strData.size();//更新已经接收到的数据量
-		}
+			long long nLength = *(long long*)pClient->getPacket().strData.c_str();
+			if (nLength == 0) {
+				AfxMessageBox("文件长度为0或者无法读取文件");
+				break;
+			}
+			while (nCount < nLength) {//已接收的数据量未达到文件总数据量
+				ret = pClient->DealCommand();
+				if (ret < 0) {
+					AfxMessageBox("传输失败");
+					TRACE("传输失败: ret = %d\r\n", ret);
+					break;
+				}
+				fwrite(pClient->getPacket().strData.c_str(), 1, pClient->getPacket().strData.size(), pFile);
+				nCount += pClient->getPacket().strData.size();//更新已经接收到的数据量
+			}
+		} while (false);
 		fclose(pFile);
 		pClient->CloseSocket();
 	}
+	m_dlgStatus.ShowWindow(SW_HIDE);//将 m_dlgStatus 对话框隐藏起来
+	EndWaitCursor();
+	MessageBox(_T("下载完成"), _T("完成"));
+
+}
+
+
+void CRemoteClientDlg::OnDownloadFile()
+{
+	//添加线程函数
+	_beginthread(CRemoteClientDlg::threadEntryForDownFile, 0, this);
+	//1 作为线程入口点，这个函数将在新线程中执行
+	//2 0是初始线程堆栈大小的参数。数值0表示使用默认的大小
+	//3 传递给线程的参数。在这种情况下，this 指针指向当前正在执行 _beginthread 调用的类实例 CRemoteClientDlg 对象。
+	BeginWaitCursor();//沙漏光标
+	m_dlgStatus.m_info.SetWindowText(_T("命令正在执行中"));//SetWindowText 方法用于设置 m_info 控件的文本内容。在这里，它被设置为显示 "命令正在执行中"
+	m_dlgStatus.ShowWindow(SW_SHOW);
+	m_dlgStatus.CenterWindow(this);
+	m_dlgStatus.SetActiveWindow();//使 m_dlgStatus 对话框成为当前活动窗口,将对话框带到屏幕的最前端
 }
 
 
@@ -452,4 +502,15 @@ void CRemoteClientDlg::OnRunFile()
 	if (ret < 0) {
 		AfxMessageBox("打开文件命令执行失败！！");
 	}
+}
+
+LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)
+{
+	//类 CRemoteClientDlg 中的一个消息处理函数 OnSendPacket 的定义。
+	//函数 OnSendPacket 响应自定义的 WM_SEND_PACKET 消息，并执行发送命令到服务器的操作。
+	CString strFile = (LPCSTR)lParam;
+	//int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+	//只接收两个函数的处理
+	int ret = SendCommandPacket(wParam >> 1, wParam & 1, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+	return ret;
 }
