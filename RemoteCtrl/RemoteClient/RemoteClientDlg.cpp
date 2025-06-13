@@ -11,6 +11,7 @@
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
+#include "CWatchDialog.h"
 
 
 // 用于应用程序“关于”菜单项的 CAboutDlg 对话框
@@ -110,6 +111,8 @@ BEGIN_MESSAGE_MAP(CRemoteClientDlg, CDialogEx)
 	//将 Windows 消息（在这里是 WM_SEND_PACKET）映射到特定消息处理函数（在这里是 CRemoteClientDlg::OnSendPacket）的一种方法。这段代码通常在一个消息映射宏列表中。
 	//WM_SEND_PACKET是用户自定义的待处理的消息
 	//&CRemoteClientDlg::OnSendPacket是用来处理这个消息的函数。这个函数必须是声明在接收处理消息的类（在这里是 CRemoteClientDlg）内的成员函数。
+	ON_BN_CLICKED(IDC_BTN_WATCH, &CRemoteClientDlg::OnBnClickedBtnWatch)
+	ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 
@@ -386,6 +389,38 @@ void CRemoteClientDlg::OnNMRClickListFile(NMHDR* pNMHDR, LRESULT* pResult)
 	}
 }
 
+void CRemoteClientDlg::threadEntryForWatchData(void* arg)
+{//开线程处理数据
+	CRemoteClientDlg* thiz = (CRemoteClientDlg*)arg;
+	thiz->threadWatchData();
+	_endthread();
+}
+
+void CRemoteClientDlg::threadWatchData()
+{//处理数据的线程实现
+	CClientSocket* pClient = NULL;
+	do {
+		CClientSocket* pClient = CClientSocket::getInstance();
+
+	} while (pClient == NULL);
+	for (;;) {//等价while(true)
+		CPacket pack(6, NULL, 0);
+		bool ret = pClient->Send(pack);
+		if (ret) {
+			int cmd = pClient->DealCommand();//拿数据
+			if (cmd == 6) {
+				if (m_isFull == false) {
+					BYTE* pData = (BYTE*)pClient->getPacket().strData.c_str();
+					//TODO:存入CImage
+					m_isFull = true;
+				}
+			}
+		}
+		else {
+			Sleep(1);//预防网络突然断掉，上面的循环把cpu拉满，留个空闲让cpu处理其他程序
+		}
+	}
+}
 
 
 void CRemoteClientDlg::threadEntryForDownFile(void* arg)
@@ -462,6 +497,8 @@ void CRemoteClientDlg::threadDownFile()
 }
 
 
+
+
 void CRemoteClientDlg::OnDownloadFile()
 {
 	//添加线程函数
@@ -513,4 +550,19 @@ LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)
 	//只接收两个函数的处理
 	int ret = SendCommandPacket(wParam >> 1, wParam & 1, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
 	return ret;
+}
+
+void CRemoteClientDlg::OnBnClickedBtnWatch()
+{
+	// TODO: 在此添加控件通知处理程序代码
+	_beginthread(CRemoteClientDlg::threadEntryForWatchData, 0, this);
+	CWatchDialog dlg(this);
+	dlg.DoModal();
+}
+
+void CRemoteClientDlg::OnTimer(UINT_PTR nIDEvent)
+{
+	// TODO: 在此添加消息处理程序代码和/或调用默认值
+
+	CDialogEx::OnTimer(nIDEvent);
 }

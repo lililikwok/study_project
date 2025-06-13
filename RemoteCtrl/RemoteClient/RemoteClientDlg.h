@@ -20,11 +20,23 @@ public:
 	protected:
 	virtual void DoDataExchange(CDataExchange* pDX);	// DDX/DDV 支持
 
+public:
+	bool isFull() const {
+		return m_isFull;
+	}
+	CImage& GetImage() {
+		return m_image;
+	}
+private:
+	CImage m_image;//缓存
+	bool m_isFull;//缓存是否有数据，true表示有缓存，false表示没有缓存数据,初始化时设置false
 
 
 private:
 	static void threadEntryForDownFile(void* arg);
 	void threadDownFile();
+	static void threadEntryForWatchData(void* arg);//静态函数不能使用this指针
+	void threadWatchData();//成员函数可以使用this指针
 	//1 查看磁盘分区 
 	//2 查看指定目录下的文件
 	//3 打开文件
@@ -70,4 +82,6 @@ public:
 	afx_msg LRESULT OnSendPacket(WPARAM wParam, LPARAM lParam);//在类的声明中用来定义一个消息处理函数。这个函数是为了响应自定义或已定义的 Windows 消息
 	//OnSendPacket: 这是函数的名称。按照MFC的命名惯例，消息处理函数的名称通常以 "On" 开头，后跟消息的名称。
 
+	afx_msg void OnBnClickedBtnWatch();
+	afx_msg void OnTimer(UINT_PTR nIDEvent);
 };
