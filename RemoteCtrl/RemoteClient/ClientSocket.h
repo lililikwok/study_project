@@ -4,7 +4,7 @@
 #include <string>
 #include <vector>
 #pragma pack(push, 1)
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 409600
 
 class CPacket
 {
