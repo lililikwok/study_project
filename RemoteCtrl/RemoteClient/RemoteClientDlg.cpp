@@ -403,7 +403,7 @@ void CRemoteClientDlg::threadWatchData()
 	{
 		if(!m_isFull){
 			int ackCmd = SendMessage(WM_SEND_PACKET, 6 << 1 | 0);
-			if (ackCmd == 6)               // 屏幕截图
+			if (ackCmd == 6)
 			{
 				// UI 线程已把包存进 pClient->getPacket()
 				const CPacket& pkt = pClient->getPacket();
