@@ -264,45 +264,74 @@ int MouseEvent() {//处理鼠标事件
     return 0;
 }
 
+//这里的发送屏幕截图是直接全部发送，没有做分包
 int SendScreen() {
-    CImage screen;//GDI(全局设备接口)
-    HDC hScreen = ::GetDC(NULL);//获取设备上下文（整个屏幕）句柄，HDC(Handle to device context
-    //::表示是全局函数，即需要创建对象就可以直接调用该函数，且该函数定义在全局命名空间中。
-    //获取每个像素的位数，屏幕高度和宽度
+    CImage screen; // GDI+ image object
+    // 1. Capture the screen
+    HDC hScreen = ::GetDC(NULL); // entire screen DC
+    if (!hScreen) return -1;
+
     int nBitPerPixel = GetDeviceCaps(hScreen, BITSPIXEL);
-    int nWidth = GetDeviceCaps(hScreen, HORZRES);
-    int nHeight = GetDeviceCaps(hScreen, VERTRES);
-    screen.Create(nWidth, nHeight, nBitPerPixel);//用上面的参数来创建screen图片对象
-    BitBlt(screen.GetDC(), 0, 0, 1920, 1020, hScreen, 0, 0, SRCCOPY); //使用 BitBlt 函数来将屏幕的图像复制到 screen 对象中
-    ReleaseDC(NULL, hScreen);
-    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, 0);//分配全局内存对象，准备使用后续内存流
-    if (hMem == NULL)//全局内存分配失败
+    int nWidth = GetDeviceCaps(hScreen, HORZRES)- 100;
+    int nHeight = GetDeviceCaps(hScreen, VERTRES)- 50;
+
+    screen.Create(nWidth, nHeight, nBitPerPixel);
+    if (!screen) {
+        ReleaseDC(NULL, hScreen);
         return -1;
-    IStream* pStream = NULL;//在分配的全局内存上创建一个 IStream 接口
-    HRESULT ret = CreateStreamOnHGlobal(hMem, TRUE, &pStream);
-    if (ret == S_OK) {
-        screen.Save(pStream, Gdiplus::ImageFormatPNG);
-        LARGE_INTEGER bg = { 0 };
-        pStream->Seek(bg, STREAM_SEEK_SET, NULL);
-        PBYTE pData = (BYTE*)GlobalLock(hMem);
-        SIZE_T nSize = GlobalSize(hMem);
-        CPacket pack(6, pData, nSize);
-        CServerSocket::getInstance()->Send(pack);
-        GlobalUnlock(hMem);
     }
 
-    //screen.Save(_T("test2023.png"),Gdiplus::ImageFormatPNG);
-    /*
-    TRACE("png %d\r\n", GetTickCount64() - tickpng);
-    DWORD tickjpg = GetTickCount64();
-    screen.Save(_T("test2023.jpg"),Gdiplus::ImageFormatPNG);
-    TRACE("jpg %d\r\n", GetTickCount64() - tickjpg);
-    */
-    pStream->Release();
+    BitBlt(screen.GetDC(), 0, 0, nWidth, nHeight, hScreen, 0, 0, SRCCOPY);
+    ReleaseDC(NULL, hScreen);
+
+    // 2. Save to file for verification
+    TCHAR szPath[MAX_PATH] = _T("screenshot.png");
+    HRESULT hrSave = screen.Save(szPath, Gdiplus::ImageFormatPNG);
+    if (FAILED(hrSave)) {
+        TRACE("Failed to save local screenshot: 0x%08X\n", hrSave);
+    }
+
+    // 3. Stream to memory for network send
+    HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, 0);
+    if (hMem == NULL)
+        return -1;
+
+    IStream* pStream = nullptr;
+    HRESULT hRet = CreateStreamOnHGlobal(hMem, TRUE, &pStream);
+    if (hRet == S_OK && pStream) {
+        // Write PNG data into stream
+        hrSave = screen.Save(pStream, Gdiplus::ImageFormatPNG);
+        if (FAILED(hrSave)) {
+            TRACE("Failed to save PNG to stream: 0x%08X\n", hrSave);
+        }
+        else {
+            // Rewind stream
+            LARGE_INTEGER bg = { 0 };
+            pStream->Seek(bg, STREAM_SEEK_SET, nullptr);
+
+            // Lock memory and send packet
+            PBYTE pData = (BYTE*)GlobalLock(hMem);
+            SIZE_T nSize = GlobalSize(hMem);
+            if (pData && nSize > 0) {
+                CPacket pack(6, pData, nSize);
+                CServerSocket::getInstance()->Send(pack);
+            }
+            GlobalUnlock(hMem);
+        }
+        pStream->Release();
+    }
+    else {
+        TRACE("CreateStreamOnHGlobal failed: 0x%08X\n", hRet);
+    }
+
+    // 4. Cleanup
     GlobalFree(hMem);
     screen.ReleaseDC();
     return 0;
 }
+
+
+
 #include "LockDialog.h"
 CLockDialog dlg;
 unsigned threadid = 0;
@@ -449,6 +478,7 @@ int ExcuteCommand(int nCmd) {
 		break;
 	case 6://发送屏幕内容，即发送屏幕的截图
         ret = SendScreen();
+        break;
 	case 7://锁机
         ret = LockMachine();
 		break;
