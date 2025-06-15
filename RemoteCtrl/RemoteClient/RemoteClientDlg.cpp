@@ -552,30 +552,35 @@ void CRemoteClientDlg::OnRunFile()
 	}
 }
 
-LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)
-{
+LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)//第四步：实现消息响应函数
+{//类 CRemoteClientDlg 中的一个消息处理函数 OnSendPacket 的定义。
+//函数 OnSendPacket 响应自定义的 WM_SEND_PACKET 消息，并执行发送命令到服务器的操作。
 	int ret = 0;
 	int cmd = wParam >> 1;
-	switch (cmd){
-	case 4:{
-			CString strFile = (LPCSTR)lParam;
-			//int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
-			//只接收两个函数的处理
-			ret = SendCommandPacket(wParam >> 1, wParam & 1, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
-		}
-		break;
+	switch (cmd) {
+	case 4:
+	{
+		CString strFile = (LPCSTR)lParam;
+		//int ret = SendCommandPacket(4, false, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+		//只接收两个函数的处理
+		ret = SendCommandPacket(cmd, wParam & 1, (BYTE*)(LPCSTR)strFile, strFile.GetLength());//发送下载命令到服务器
+	}
+	break;
+	case 5: {//鼠标操作
+		ret = SendCommandPacket(cmd, wParam & 1, (BYTE*)lParam, sizeof(MOUSEEV));
+	}
+		  break;
 	case 6:
-		{
-			ret = SendCommandPacket(cmd, wParam & 1);
-		}
-		break;
+	{
+		ret = SendCommandPacket(cmd, wParam & 1);//发送下载命令到服务器
+	}
+	break;
 	default:
 		ret = -1;
 	}
-	//类 CRemoteClientDlg 中的一个消息处理函数 OnSendPacket 的定义。
-	//函数 OnSendPacket 响应自定义的 WM_SEND_PACKET 消息，并执行发送命令到服务器的操作。
 	return ret;
 }
+
 
 void CRemoteClientDlg::OnBnClickedBtnWatch()
 {
