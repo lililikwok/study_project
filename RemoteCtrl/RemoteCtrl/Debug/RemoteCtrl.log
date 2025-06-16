@@ -1,0 +1,11 @@
+﻿  pch.cpp
+  LockDialog.cpp
+  RemoteCtrl.cpp
+C:\Develop\CProjects\study_project\RemoteCtrl\RemoteCtrl\RemoteCtrl.cpp(108,21): warning C4244: “参数”: 从“__int64”转换到“intptr_t”，可能丢失数据
+  (编译源文件“/RemoteCtrl.cpp”)
+  
+C:\Develop\CProjects\study_project\RemoteCtrl\RemoteCtrl\RemoteCtrl.cpp(87,3): error C4996: 'strncpy': This function or variable may be unsafe. Consider using strncpy_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  (编译源文件“/RemoteCtrl.cpp”)
+  
+  ServerSocket.cpp
+  正在生成代码...

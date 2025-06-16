@@ -153,7 +153,7 @@ BOOL CRemoteClientDlg::OnInitDialog()
 
 	UpdateData();
 	m_nPort = _T("9527");
-	m_server_address = 0x7F000001;
+	m_server_address = 0xC0A80165;
 	UpdateData(FALSE);
 	m_dlgStatus.Create(IDD_DLG_STATUS, this);//因为放在别的地方可能会创建两次引发异常，所以CREATE放在主类的构造函数里面
 	m_dlgStatus.FlashWindow(SW_HIDE);
@@ -399,7 +399,7 @@ void CRemoteClientDlg::threadEntryForWatchData(void* arg)
 void CRemoteClientDlg::threadWatchData()
 {
 	CClientSocket* pClient = CClientSocket::getInstance();
-	for (;;)
+	while(!m_isClosed)
 	{
 		if(!m_isFull){
 			int ackCmd = SendMessage(WM_SEND_PACKET, 6 << 1 | 0);
@@ -419,6 +419,7 @@ void CRemoteClientDlg::threadWatchData()
 					pStream->Write(pData, (ULONG)cbData, &written);
 					LARGE_INTEGER bg = { 0 };
 					pStream->Seek(bg, STREAM_SEEK_SET, nullptr);
+					if ((HBITMAP)m_image != NULL) m_image.Destroy();
 					m_image.Load(pStream);
 					m_isFull = true;
 				}
@@ -584,10 +585,13 @@ LRESULT CRemoteClientDlg::OnSendPacket(WPARAM wParam, LPARAM lParam)//第四步�
 
 void CRemoteClientDlg::OnBnClickedBtnWatch()
 {
+	m_isClosed = false;
 	CWatchDialog dlg(this);
 	// TODO: 在此添加控件通知处理程序代码
-	_beginthread(CRemoteClientDlg::threadEntryForWatchData, 0, this);
-	dlg.DoModal();
+	HANDLE hThread = (HANDLE)_beginthread(CRemoteClientDlg::threadEntryForWatchData, 0, this);
+	dlg.DoModal();//这行代码会阻塞，直到用户关闭对话框（点击“关闭”或“取消”）
+	m_isClosed = true;
+	WaitForSingleObject(hThread, 500);//阻塞半秒，给线程一些时间结束自己
 }
 
 void CRemoteClientDlg::OnTimer(UINT_PTR nIDEvent)
