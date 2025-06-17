@@ -334,15 +334,26 @@ unsigned __stdcall threadLockDlg(void* arg) {
     rect.top = 0;
     rect.right = GetSystemMetrics(SM_CXFULLSCREEN);
     rect.bottom = GetSystemMetrics(SM_CYFULLSCREEN);
+    rect.bottom = LONG(rect.bottom * 1.15);
     TRACE("right = %d bottom = %d\r\n", rect.right, rect.bottom);
     dlg.MoveWindow(rect);
+    CWnd* pText = dlg.GetDlgItem(IDC_STATIC);
+    if(pText){
+        CRect rtText;
+        pText->GetWindowRect(rtText);
+        int nWidth = rtText.Width() / 2;
+        int x = (rect.right - nWidth) / 2;
+        int nHeight = rtText.Height();
+        int y = (rect.bottom - nHeight) / 2;
+        pText->MoveWindow(x, y, rtText.Width(), rtText.Height());
+    }
     dlg.SetWindowPos(&dlg.wndTopMost, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE);//将 dlg 对话框保持在所有窗口的最上层，但是不改变其大小和位置。
     //限制鼠标功能
-    //ShowCursor(false);//隐藏光标
+    ShowCursor(false);//隐藏光标
     //隐藏任务栏
     ::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_HIDE);//寻找类名为 Shell_TrayWnd（即 Windows 任务栏）的窗口，然后通过 ShowWindow 函数将其设置为显示状态。这通常会导致原本隐藏的任务栏被显示出来。
     //限制鼠标活动范围
-    //dlg.GetWindowRect(rect);//GetWindowRect 函数获取了 dlg 窗口在屏幕上的位置和尺寸，再赋值给 rect
+    dlg.GetWindowRect(rect);//GetWindowRect 函数获取了 dlg 窗口在屏幕上的位置和尺寸，再赋值给 rect
     rect.left = 0;
     rect.top = 0;
     rect.right = 1;
@@ -360,12 +371,12 @@ unsigned __stdcall threadLockDlg(void* arg) {
         DispatchMessage(&msg);//把消息分发给窗口程序的窗口过程函数，进行消息处理
         if (msg.message == WM_KEYDOWN) {
             TRACE("msg:%08X wparam:%08X lparam:%08X\r\n", msg.message, msg.wParam, msg.lParam);
-            if (msg.wParam == 0x41) {//按ESC退出
+            if (msg.wParam == 0x41) {//按A退出
                 break;
             }
         }
     }
-
+    ClipCursor(NULL);
     ShowCursor(true);
     ::ShowWindow(::FindWindow(_T("Shell_TrayWnd"), NULL), SW_SHOW);//寻找类名为 Shell_TrayWnd（即 Windows 任务栏）的窗口，然后通过 ShowWindow 函数将其设置为显示状态。这通常会导致原本隐藏的任务栏被显示出来。
     dlg.DestroyWindow();
