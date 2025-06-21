@@ -1,137 +1,9 @@
 #pragma once
 #include "pch.h"
 #include "framework.h"
-
-#pragma pack(push, 1) // 设置结构体按1字节对齐
-class CPacket
-{
-public:
-	CPacket() :sHead(0), nLength(0), sCmd(0), sSum(0) {}
-	CPacket(WORD nCmd, const BYTE* pData, size_t nSize) {//根据给定的参数来构建CPacket对象
-		sHead = 0xFEFF;
-		nLength = nSize + 4;
-		sCmd = nCmd;
-		if (nSize > 0) {
-			strData.resize(nSize);
-			memcpy((void*)strData.c_str(), pData, nSize);
-		}
-		else {
-			strData.clear();
-		}
-
-		sSum = 0;
-		for (size_t j = 0; j < strData.size(); j++)
-		{
-			sSum += BYTE(strData[j]) & 0xFF;
-		}
-
-	}
-	CPacket(const CPacket& pack) {//拷贝构造
-		sHead = pack.sHead;
-		nLength = pack.nLength;
-		sCmd = pack.sCmd;
-		strData = pack.strData;
-		sSum = pack.sSum;
-	}
-	//返回nSize：表示传进来的buffer使用了几个字节，如果数据不完整或者其他的错误，返回0，不对buffer进行操作
-	CPacket(const BYTE* pData, size_t& nSize) {//找包头
-		size_t i = 0;
-		for (; i < nSize; i++) {
-			if (*(WORD*)(pData + i) == 0xFEFF) {
-				sHead = *(WORD*)(pData + i);
-				i += 2;
-				break;
-			}
-		}
-		if ((i + 4 + 2 + 2) > nSize) {//加上4字节长度字段，命令字段（2字节），校验和字段（2字节）包数据可能不全，或者包头未能全部接收到
-			nSize = 0;
-			return;
-		}
-		nLength = *(DWORD*)(pData + i); i += 4;
-		if (nLength + i > nSize) {//包未完全接收到，就返回，解析失败
-			nSize = 0;
-			return;
-		}
-
-		sCmd = *(WORD*)(pData + i); i += 2;//pData是一个指针，(WORD*)是将一个指针转换成一个指向WORD类型的指针，再加*是解引用
-		if (nLength > 4) {
-			strData.resize(nLength - 2 - 2);
-			memcpy((void*)strData.c_str(), pData + i, nLength - 4);
-			i += nLength - 4;
-		}
-		sSum = *(WORD*)(pData + i);
-		i += 2;
-		WORD sum = 0;
-		for (size_t j = 0; j < strData.size(); j++) {
-			sum += BYTE(strData[j]) & 0xFF;
-		}
-		if (sum == sSum) {
-			nSize = i;//head,length,data...
-			return;
-		}
-		else
-			nSize = 0;
-	}
-	~CPacket() {}
-	CPacket& operator=(const CPacket& pack) {
-		if (this != &pack) {
-			sHead = pack.sHead;
-			nLength = pack.nLength;
-			sCmd = pack.sCmd;
-			strData = pack.strData;
-			sSum = pack.sSum;
-		}
-		else
-			return *this;
-	}
-	int Size() {//包数据的大小
-		return nLength + 6;
-	}
-	const char* Data() {//将CPacket对象的各个部分组合起来，并返回指向序列开头的const char*指针
-		strOut.resize(nLength + 6);
-		BYTE* pData = (BYTE*)strOut.c_str();//对pData操作影响strOut内容
-		*(WORD*)pData = sHead; pData += 2;
-		*(DWORD*)pData = nLength; pData += 4;
-		*(WORD*)pData = sCmd; pData += 2;
-		memcpy(pData, strData.c_str(), strData.size()); pData += strData.size();
-		*(WORD*)pData = sSum;
-		return strOut.c_str();
-	}
-
-public:
-	WORD sHead;//包头，固定位FE FF
-	DWORD nLength;//包长度（从控制命令开始，到和校验结束）
-	WORD sCmd;//控制命令
-	std::string strData;//包数据
-	WORD sSum;//和校验
-	std::string strOut;//整个包的数据
-};
-#pragma pack(pop)
-
-typedef struct MouseEvent {
-	MouseEvent() {
-		nAction = 0;
-		nButton = -1;
-		ptXY.x = 0;
-		ptXY.y = 0;
-	}
-	WORD nAction;//点击，移动，双击
-	WORD nButton;//左键，右键，中键
-	POINT ptXY;//坐标
-}MOUSEEV, * PMOUSEEV;
-
-typedef struct file_info {
-	file_info() {
-		IsInvalid = FALSE;
-		IsDirectory = -1;
-		HasNext = TRUE;
-		memset(szFileName, 0, sizeof(szFileName));
-	}
-	BOOL IsInvalid;//是否有效
-	char szFileName[256];//文件名
-	BOOL HasNext;//是否还有后续，0没有1有
-	BOOL IsDirectory;//是否为目录，0否1是
-}FILEINFO, * PFILEINFO;
+#include "Packet.h"
+#include <list>
+typedef void (*SOCKET_CALLBACK)(void*, int, std::list<CPacket>&, CPacket&);
 
 class CServerSocket
 {
@@ -142,14 +14,46 @@ public:
 		}
 		return m_instance;
 	}
-	bool InitSocket() {
 
+	int Run(SOCKET_CALLBACK callback, void* arg, short port = 9527) {
+		//1 进度的可控性 2 对接的方便性 3 可行性评估，提早暴漏风险
+		// TODO: socket,bind,listen,accept,read,write,close
+		//套接字初始化
+		bool ret = InitSocket(port);//阻塞等待连接
+		if (ret == false)
+			return -1;
+		std::list<CPacket> lstPackets;
+		m_callback = callback;//具体业务函数回调指针
+		m_arg = arg;//回调函数参数
+		int count = 0;
+		while (true) {
+			if (AcceptClient() == false) {
+				if (count >= 3) {
+					return -2;
+				}
+				count++;
+			}
+			int ret = DealCommand();//解析接受到的包
+			if (ret > 0) {
+				m_callback(m_arg, ret, lstPackets, m_packet);//m_callback(m_arg, ret); 会调用回调函数，并向其中传递两个参数：一个是与特定操作相关的数据（m_arg），另一个是最近一次操作的结果（ret）
+				while (lstPackets.size() > 0) {
+					Send(lstPackets.front());//发第一个数据包
+					lstPackets.pop_front();
+				}
+			}
+			CloseClient();
+		}
+		return 0;
+	}
+
+protected:
+	bool InitSocket(short port) {
 		if (m_sock == -1)return false;
 		sockaddr_in serv_adr;
 		memset(&serv_adr, 0, sizeof(serv_adr));
 		serv_adr.sin_family = AF_INET;
 		serv_adr.sin_addr.s_addr = INADDR_ANY;
-		serv_adr.sin_port = htons(9527);
+		serv_adr.sin_port = htons(port);
 		//绑定
 		if (bind(m_sock, (sockaddr*)&serv_adr, sizeof(serv_adr)) == -1) {
 			return false;
@@ -158,8 +62,8 @@ public:
 			return false;
 		}
 		return true;
-
 	}
+
 	bool AcceptClient() {
 		sockaddr_in client_adr;
 		//char buffer[1024];
@@ -193,7 +97,7 @@ public:
 			m_packet = CPacket((BYTE*)buffer, len);//这里的len变成了：打包使用了多少字节
 			if (len > 0) {
 				memmove(buffer, buffer + len, BUFFER_SIZE - len);//内存移动，参数分别是：1.目标地址。 2.原地址。 3.要移动的字节数
-				index -= len;//index指向新的尾地址
+				index -= len;
 				delete[] buffer;
 				return m_packet.sCmd;
 			}
@@ -234,6 +138,8 @@ public:
 		return m_packet;
 	}
 private:
+	SOCKET_CALLBACK m_callback;
+	void* m_arg;//void 不能用来声明一个变量，因为它不代表任何具体的数据类型。应该使用 void*，它是一个指向 void 的指针。这通常用于泛型数据指针，可转换为任何数据类型的指针
 	SOCKET m_sock;
 	SOCKET m_client;
 	CPacket m_packet;
