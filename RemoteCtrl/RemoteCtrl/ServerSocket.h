@@ -113,29 +113,10 @@ protected:
 		if (m_client == -1)return false;
 		return (send(m_client, pack.Data(), pack.Size(), 0)) > 0;
 	}
-	bool GetFilePath(std::string& strPath) {
-		if (((m_packet.sCmd == 9) || (m_packet.sCmd == 2) || (m_packet.sCmd == 3) || (m_packet.sCmd == 4))) {//获取文件列表
-			strPath = m_packet.strData;
-			return true;
-		}
-		else
-			return false;
-	}
-	bool GetMouseEvent(MOUSEEV& mouse) {
-		if (m_packet.sCmd == 5) {
-			memcpy(&mouse, m_packet.strData.c_str(), sizeof(MOUSEEV));
-			return true;
-		}
-		return false;
-	}
 
 	void CloseClient() {
 		closesocket(m_client);
 		m_client = INVALID_SOCKET;
-	}
-
-	CPacket& GetPacket() {
-		return m_packet;
 	}
 private:
 	SOCKET_CALLBACK m_callback;

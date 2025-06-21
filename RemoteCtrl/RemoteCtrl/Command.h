@@ -112,51 +112,62 @@ protected:
         for (int i = 1; i <= 26; i++) {
             int ret = _chdrive(i);
             if (ret == 0) {//成功改变当前活动的驱动器
-                if (result.size() > 0)
-                    result += ',';
                 result += 'A' + i - 1;
+                result += ',';
             }
         }
         lstPacket.push_back(CPacket(1, (BYTE*)result.c_str(), result.size()));
         return 0;
     }
 
-    int MakeDirectoryInfo(std::list<CPacket>& lstPacket, CPacket& inPacket) {//用来收集特定路径下的文件和目录信息，并在发生错误的时候输出调试信息
+
+	int MakeDirectoryInfo(std::list<CPacket>& lstPacket, CPacket& inPacket) {
         std::string strPath = inPacket.strData;
-        //std::initializer_list<FILEINFO> lstFileInfos;
-        if (_chdir(strPath.c_str()) != 0) {//更改当前工作目录为strpath指向的路径
-            //_chdir:更改当前的工作目录
-            FILEINFO finfo;//当目录由于权限不足无法切换时
-            finfo.HasNext = FALSE;
+
+		OutputDebugStringA(("[Server] 收到目录请求: " + strPath + "\n").c_str());
+
+		if (_chdir(strPath.c_str()) != 0) {
+			FILEINFO finfo = {};
+			finfo.HasNext = FALSE;
+			//CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
             lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
-            OutputDebugString(_T("没有权限访问目录"));
-            return -2;
-        }
-        _finddata_t fdata;//存储文件查找信息
-        int hfind = 0;
-        if ((hfind = _findfirst("*", &fdata)) == -1) {
-            OutputDebugString(_T("没有找到任何文件"));
-            FILEINFO finfo;
-            finfo.HasNext = FALSE;
+			OutputDebugString(_T("[Server] 无权限访问目录\n"));
+			return -2;
+		}
+
+		_finddata_t fdata;
+		__int64 hfind = _findfirst("*", &fdata);
+		if (hfind == -1) {
+			OutputDebugString(_T("[Server] 没有找到任何文件\n"));
+			FILEINFO finfo = {};
+			finfo.HasNext = FALSE;
             lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
-            return -3;
-        }
-        int count = 0;
-        do {
-            FILEINFO finfo;
-            finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;//判断当前处理的文件项是不是目录
-            memcpy(finfo.szFileName, fdata.name, strlen(fdata.name));
-            TRACE("%s\r\n", finfo.szFileName);
-            lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
-            count++;
-        } while (!_findnext(hfind, &fdata));//获取下一个文件项信息
-        TRACE("server: count = %d\r\n", count);
-        //发送信息到客户端 
-        FILEINFO finfo;
-        finfo.HasNext = FALSE;
-        lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
-        return 0;
-    }
+			return -3;
+		}
+
+		do {
+			FILEINFO finfo = {};
+			finfo.HasNext = TRUE;
+			finfo.IsDirectory = (fdata.attrib & _A_SUBDIR) != 0;
+			strncpy(finfo.szFileName, fdata.name, sizeof(finfo.szFileName) - 1);
+			lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
+
+
+
+		} while (_findnext(hfind, &fdata) == 0);
+
+		// 最后一包：HasNext = FALSE
+		FILEINFO finfo = {};
+		finfo.HasNext = FALSE;
+		//CPacket pack(2, (BYTE*)&finfo, sizeof(finfo));
+		lstPacket.push_back(CPacket(2, (BYTE*)&finfo, sizeof(finfo)));
+
+		//CServerSocket::getInstance()->Send(pack);
+		OutputDebugString(_T("[Server] 已发送结束标志 (HasNext = 0)\n"));
+
+		return 0;
+	}
+
 
     int RunFile(std::list<CPacket>& lstPacket, CPacket& inPacket) {
         std::string strPath = inPacket.strData;
@@ -193,7 +204,7 @@ protected:
             size_t rlen = 0;//fread返回值
             do {
                 rlen = fread(buffer, 1, 1024, pFile);//在buffer里读，一次读1字节，读1024次
-                lstPacket.push_back(CPacket(4, (BYTE*)&data, 8));
+                lstPacket.push_back(CPacket(4, (BYTE*)&buffer, rlen));
             } while (rlen >= 1024);
             fclose(pFile);
         }

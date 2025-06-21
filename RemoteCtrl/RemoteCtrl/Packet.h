@@ -1,8 +1,7 @@
 #pragma once
 #include "pch.h"
 #include "framework.h"
-#pragma pack(push)
-#pragma pack(1)//告诉编译器将每个成员变量的对齐设为1字节
+#pragma pack(push, 1) // 设置结构体按1字节对齐
 class CPacket
 {
 public:
@@ -33,6 +32,7 @@ public:
 		strData = pack.strData;
 		sSum = pack.sSum;
 	}
+	//返回nSize：表示传进来的buffer使用了几个字节，如果数据不完整或者其他的错误，返回0，不对buffer进行操作
 	CPacket(const BYTE* pData, size_t& nSize) {//找包头
 		size_t i = 0;
 		for (; i < nSize; i++) {
@@ -80,7 +80,8 @@ public:
 			strData = pack.strData;
 			sSum = pack.sSum;
 		}
-		return *this;
+		else
+			return *this;
 	}
 	int Size() {//包数据的大小
 		return nLength + 6;
@@ -126,7 +127,7 @@ typedef struct file_info {
 		memset(szFileName, 0, sizeof(szFileName));
 	}
 	BOOL IsInvalid;//是否有效
-	BOOL IsDirectory;//是否为目录，0否1是
-	BOOL HasNext;//是否还有后续，0没有1有
 	char szFileName[256];//文件名
+	BOOL HasNext;//是否还有后续，0没有1有
+	BOOL IsDirectory;//是否为目录，0否1是
 }FILEINFO, * PFILEINFO;

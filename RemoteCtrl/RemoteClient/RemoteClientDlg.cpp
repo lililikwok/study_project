@@ -153,7 +153,8 @@ BOOL CRemoteClientDlg::OnInitDialog()
 
 	UpdateData();
 	m_nPort = _T("9527");
-	m_server_address = 0xC0A80165;
+	//m_server_address = 0xC0A80165;
+	m_server_address = 0x7F000001;
 	UpdateData(FALSE);
 	m_dlgStatus.Create(IDD_DLG_STATUS, this);//因为放在别的地方可能会创建两次引发异常，所以CREATE放在主类的构造函数里面
 	m_dlgStatus.FlashWindow(SW_HIDE);
