@@ -11,6 +11,7 @@
 #define IDD_DLG_STATUS                  132
 #define IDD_DLG_WATCH                   134
 #define IDC_BTN_TEXT                    1000
+#define IDC_BTN_TEST                    1000
 #define IDC_EDIT_PORT                   1001
 #define IDC_IPADDRESS1                  1002
 #define IDC_IPADDRESS_SERV              1002

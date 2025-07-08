@@ -119,6 +119,7 @@ protected:
 		m_client = INVALID_SOCKET;
 	}
 private:
+	static CServerSocket* m_instance;
 	SOCKET_CALLBACK m_callback;
 	void* m_arg;//void 不能用来声明一个变量，因为它不代表任何具体的数据类型。应该使用 void*，它是一个指向 void 的指针。这通常用于泛型数据指针，可转换为任何数据类型的指针
 	SOCKET m_sock;
@@ -155,7 +156,6 @@ private:
 			delete tmp;
 		}
 	}
-	static CServerSocket* m_instance;
 
 	class CHelper {//在单例模式中管理生命周期，确保单例的实例正确的在程序结束时被销毁
 	public:

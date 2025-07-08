@@ -1,7 +1,4 @@
-﻿// CStatusDlg.cpp: 实现文件
-//
-
-#include "pch.h"
+﻿#include "pch.h"
 #include "RemoteClient.h"
 #include "afxdialogex.h"
 #include "CStatusDlg.h"

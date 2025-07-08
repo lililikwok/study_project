@@ -12,7 +12,7 @@ public:
 	CStatusDlg(CWnd* pParent = nullptr);   // 标准构造函数
 	virtual ~CStatusDlg();
 
-// 对话框数据
+	// 对话框数据
 #ifdef AFX_DESIGN_TIME
 	enum { IDD = IDD_DLG_STATUS };
 #endif

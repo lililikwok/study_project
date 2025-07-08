@@ -1,23 +1,27 @@
-﻿#include "pch.h"
+﻿
+// testMFC.cpp: 定义应用程序的类行为。
+//
+
+#include "pch.h"
 #include "framework.h"
-#include "RemoteClient.h"
-#include "ClientController.h"
+#include "testMFC.h"
+#include "testMFCDlg.h"
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
 
-// CRemoteClientApp
+// CtestMFCApp
 
-BEGIN_MESSAGE_MAP(CRemoteClientApp, CWinApp)
+BEGIN_MESSAGE_MAP(CtestMFCApp, CWinApp)
 	ON_COMMAND(ID_HELP, &CWinApp::OnHelp)
 END_MESSAGE_MAP()
 
 
-// CRemoteClientApp 构造
+// CtestMFCApp 构造
 
-CRemoteClientApp::CRemoteClientApp()
+CtestMFCApp::CtestMFCApp()
 {
 	// 支持重新启动管理器
 	m_dwRestartManagerSupportFlags = AFX_RESTART_MANAGER_SUPPORT_RESTART;
@@ -27,16 +31,16 @@ CRemoteClientApp::CRemoteClientApp()
 }
 
 
-// 唯一的 CRemoteClientApp 对象
+// 唯一的 CtestMFCApp 对象
 
-CRemoteClientApp theApp;
+CtestMFCApp theApp;
 
 
-// CRemoteClientApp 初始化
+// CtestMFCApp 初始化
 
-BOOL CRemoteClientApp::InitInstance()
+BOOL CtestMFCApp::InitInstance()
 {
-	// 如果一个运行在 Windows XP 上的应用程序清单指定要
+	// 如果应用程序存在以下情况，Windows XP 上需要 InitCommonControlsEx()
 	// 使用 ComCtl32.dll 版本 6 或更高版本来启用可视化方式，
 	//则需要 InitCommonControlsEx()。  否则，将无法创建窗口。
 	INITCOMMONCONTROLSEX InitCtrls;
@@ -53,7 +57,7 @@ BOOL CRemoteClientApp::InitInstance()
 
 	// 创建 shell 管理器，以防对话框包含
 	// 任何 shell 树视图控件或 shell 列表视图控件。
-	CShellManager* pShellManager = new CShellManager;
+	CShellManager *pShellManager = new CShellManager;
 
 	// 激活“Windows Native”视觉管理器，以便在 MFC 控件中启用主题
 	CMFCVisualManager::SetDefaultManager(RUNTIME_CLASS(CMFCVisualManagerWindows));
@@ -66,11 +70,10 @@ BOOL CRemoteClientApp::InitInstance()
 	// TODO: 应适当修改该字符串，
 	// 例如修改为公司或组织名
 	SetRegistryKey(_T("应用程序向导生成的本地应用程序"));
-	CClientController::getInstance()->InitController();
-	INT_PTR nResponse = CClientController::getInstance()->Invoke(m_pMainWnd);
-	//CRemoteClientDlg dlg;
-	//m_pMainWnd = &dlg;
-	//INT_PTR nResponse = dlg.DoModal();
+
+	CtestMFCDlg dlg;
+	m_pMainWnd = &dlg;
+	INT_PTR nResponse = dlg.DoModal();
 	if (nResponse == IDOK)
 	{
 		// TODO: 在此放置处理何时用
@@ -91,7 +94,6 @@ BOOL CRemoteClientApp::InitInstance()
 	if (pShellManager != nullptr)
 	{
 		delete pShellManager;
-		TRACE("shell manager has deleted\r\n");
 	}
 
 #if !defined(_AFXDLL) && !defined(_AFX_NO_MFC_CONTROLS_IN_DIALOGS)
